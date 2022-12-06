@@ -1,6 +1,6 @@
 # image_editor
 
-This image editor is a work in progress and several more features are planned. The program also requires a lookup table to run that was too large to upload to GitHub. This lookup table can be downloaded here: 
+This image editor is a work in progress and several more features are planned. The program also requires a lookup table to run that was too large to upload to GitHub. This lookup table can be downloaded from the below link and should be saved in the same folder as the source code when running the program.
 
 https://drive.google.com/file/d/1k1Cj4Zb8b78z752K549cg2YpBlP1jykS/view?usp=sharing
 
