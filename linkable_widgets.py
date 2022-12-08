@@ -73,9 +73,9 @@ class _LinkableWidget(ABC):
 
 
 class LinkableEntry(_LinkableWidget, tk.Entry):
-    def __init__(self, master, valueRange=(-100, 100), **kwargs):
-        self._previousValue = 0
-        self._previousValidNumber = 0
+    def __init__(self, master, valueRange=(-100, 100), initialValue=0, **kwargs):
+        self._previousValue = initialValue
+        self._previousValidNumber = initialValue
         self._value = tk.StringVar(value=self._previousValue)
         super().__init__(valueRange=valueRange, master=master, textvariable=self._value, **kwargs)
         self.bind('<FocusIn>', self._on_focus_in)
