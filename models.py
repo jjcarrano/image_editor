@@ -312,7 +312,7 @@ class _ImageProcessor:
         self._modifiedPixels = copy.deepcopy(self._originalPixels)
         self._rgbModifier = _RgbModifier(self._modifiedPixels)
         self._lmsModifier = _LmsModifier(self._modifiedPixels)
-        self._oklchModifier = _OklabModifier(self._modifiedPixels)
+        self._oklabModifier = _OklabModifier(self._modifiedPixels)
         self._processedImage = _Observable(self._modifiedPixels.reverse())
         self.processingParams = {ParamType.EQUALIZE: 0.,
                                  ParamType.BRIGHTNESS: 1.,
@@ -342,7 +342,7 @@ class _ImageProcessor:
                                                         self.processingParams[ParamType.CONTRAST],
                                                         self.processingParams[ParamType.WARMTH],
                                                         self.processingParams[ParamType.TINT])
-        self._oklchModifier.modify_hue_saturation(self.processingParams[ParamType.SATURATION],
+        self._oklabModifier.modify_hue_saturation(self.processingParams[ParamType.SATURATION],
                                                   self.processingParams[ParamType.TWO_TONE_HUE],
                                                   self.processingParams[ParamType.TWO_TONE_SATURATION])
         self._processedImage.data = self._modifiedPixels.reverse()
