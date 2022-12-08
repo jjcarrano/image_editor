@@ -5,10 +5,6 @@ from numba import njit, prange
 import copy
 from scipy import fft
 
-_srgb2oklchLUT = np.load('srgb2oklch_LUT.npy')
-_gammaCompressLUT = np.load('linear_srgb2srgb_LUT.npy')
-_gammaExpandLUT = np.load('srgb2linear_srgb_LUT.npy')
-
 
 class ParamType(enum.Enum):
     EQUALIZE = enum.auto()
@@ -17,6 +13,8 @@ class ParamType(enum.Enum):
     SATURATION = enum.auto()
     WARMTH = enum.auto()
     TINT = enum.auto()
+    TWO_TONE_HUE = enum.auto()
+    TWO_TONE_SATURATION = enum.auto()
 
 
 class _Observable:
@@ -100,11 +98,11 @@ class _RgbModifier:
         self.xSqr = (np.pi/256*self.x)**2
 
     def equalize(self, t):
-        diffusedFrequencies = fft.idct(self.histogramFrequencies*np.exp(-self.xSqr*t**2))
+        diffusedHistogram = fft.idct(self.histogramFrequencies*np.exp(-self.xSqr*t**2))
         if t >= 0:
-            new_pixels = np.interp(self.cdf, np.cumsum(diffusedFrequencies), self.x).astype(np.float32)
+            new_pixels = np.interp(self.cdf, np.cumsum(diffusedHistogram), self.x).astype(np.float32)
         else:
-            new_pixels = np.interp(np.cumsum(diffusedFrequencies), self.cdf, self.x).astype(np.float32)
+            new_pixels = np.interp(np.cumsum(diffusedHistogram), self.cdf, self.x).astype(np.float32)
         self._modifiedPixels.values = np.reshape(new_pixels[self._modifiedPixels.values.ravel()],
                                                  self._modifiedPixels.values.shape)
 
@@ -136,7 +134,11 @@ class _LmsModifier:
     def _srgb2lms(pixels, lsrgb2lmsMatrix):
         for m in prange(pixels.shape[0]):
             for n in prange(pixels.shape[1]):
-                pixels[m, n] = _gammaExpandLUT[int(pixels[m, n])]
+                subPixel = pixels[m, n]
+                if subPixel <= 10.31475:
+                    pixels[m, n] = subPixel/3294.6
+                else:
+                    pixels[m, n] = ((subPixel+14.025)/269.025)**2.4
         pixels = pixels@lsrgb2lmsMatrix
         return pixels
 
@@ -148,22 +150,21 @@ class _LmsModifier:
         whiteBalanceScale = self._determine_white_balance_scale(warmth, tintFactor)
         self._bezier_transform(self._modifiedPixels.values,
                                inflectionPoint, brightness*whiteBalanceScale, contrast)
-        self._modifiedPixels.values = self._lms2srgb(self._modifiedPixels.values, self.lms2lsrgbMatrix)
 
     @staticmethod
     @njit(parallel=True, cache=True)
     def _determine_inflection_point(values, counts, brightness):
         brightness = brightness**(1/3)
-        runningValueSum = 0
-        runningCountSum = 0
+        valueAccumulator = 0
+        countAccumulator = 0
         for m in prange(values.shape[0]):
             for n in prange(values.shape[1]):
                 brightnessAdjustedValue = brightness*values[m, n]**(1/3)
                 if brightnessAdjustedValue > 1:
                     brightnessAdjustedValue = 1
-                runningValueSum += brightnessAdjustedValue*counts[m]
-                runningCountSum += counts[m]
-        meanEstimate = runningValueSum/runningCountSum
+                valueAccumulator += brightnessAdjustedValue*counts[m]
+                countAccumulator += counts[m]
+        meanEstimate = valueAccumulator/countAccumulator
         return max(min(meanEstimate, .9), .1)**3
 
     def _determine_white_balance_scale(self, warmth, tintFactor):
@@ -241,60 +242,67 @@ class _LmsModifier:
                 t = -1/(3*a)*(b+bigC+delta0/bigC)
                 pixels[m, n] = (1-t)**3*y0+3*(1-t)**2*t*x1+3*(1-t)*t**2*x2+t**3*y3
 
-    @staticmethod
-    @njit(parallel=True, cache=True)
-    def _lms2srgb(lms, lms2lsrgbMatrix):
-        lms = lms@lms2lsrgbMatrix
-        srgb = np.zeros((lms.shape[0], lms.shape[1]), dtype=np.uint8)
-        for m in prange(lms.shape[0]):
-            for n in prange(lms.shape[1]):
-                ind = round(lms[m, n]*4095)
-                if ind < 0:
-                    ind = 0
-                elif ind > 4095:
-                    ind = 4095
-                srgb[m, n] = _gammaCompressLUT[ind]
-        return srgb
 
-
-class _OklchModifier:
-    # Saturation adjustment done in OKLCH space
+class _OklabModifier:
+    # Saturation adjustment done in OKLAB space
     def __init__(self, modifiedPixels):
         self._modifiedPixels = modifiedPixels
+        self.lms2oklmsMatrix = np.array([[0.90929928, 0.4085416, 0.14721228],
+                                         [0.06450354, 0.49764315, 0.16153364],
+                                         [0.02619717, 0.09381525, 0.69125408]], dtype=np.float32)
+        self.lmsPrime2oklabMatrix = np.array([[0.2104542553, 1.9779984951, 0.0259040371],
+                                              [0.7936177850, -2.4285922050, 0.7827717662],
+                                              [-0.0040720468, 0.4505937099, -0.8086757660]])
+        self.oklab2lmsPrimeMatrix = np.array([[0.9999999985, 1.0000000089, 1.0000000547],
+                                              [0.3963377922, -0.1055613423, -0.0894841821],
+                                              [0.2158037581, -0.0638541748, -1.2914855379]])
+        self.oklms2lsrgbMatrix = np.array([[4.07674166, -1.268438, -0.00419609],
+                                           [-3.30771159, 2.6097574, -0.70341861],
+                                           [0.23096993, -0.3413194, 1.7076147]], dtype=np.float32)
 
-    def modify_saturation(self, saturationFactor):
-        pixels = self._modifiedPixels.values
-        oklab = self._forward_transform_and_modify(pixels, _srgb2oklchLUT, saturationFactor)
-        self._modifiedPixels.values = self._oklab2srgb(oklab, _gammaCompressLUT)
+    def modify_hue_saturation(self, saturationFactor, twoToneHue, twoToneSaturation):
+        lmsPrime = self._lms2lmsPrime(self._modifiedPixels.values, self.lms2oklmsMatrix)
+        theta = twoToneHue*np.pi/180+np.pi/2
+        a = twoToneSaturation-1
+        b = saturationFactor*a*np.sin(2*theta)/2
+        adjustmentMatrix = np.array([[1., 0., 0.],
+                                     [0., saturationFactor*(1+a*np.cos(theta)**2), b],
+                                     [0., b, saturationFactor*(1+a*np.sin(theta)**2)]])
+        adjustedLmsPrime = lmsPrime@(self.lmsPrime2oklabMatrix @
+                                     adjustmentMatrix @
+                                     self.oklab2lmsPrimeMatrix).astype(np.float32)
+        self._modifiedPixels.values = self._lmsPrime2srgb(adjustedLmsPrime, self.oklms2lsrgbMatrix)
 
     @staticmethod
     @njit(parallel=True, cache=True)
-    def _forward_transform_and_modify(uniquePixels, LUT, satFactor):
-        oklab = np.zeros((uniquePixels.shape[0], uniquePixels.shape[1]), dtype=np.float32)
-        for i in prange(oklab.shape[0]):
-            sat = LUT[uniquePixels[i, 0], uniquePixels[i, 1], uniquePixels[i, 2], 1]
-            hue = LUT[uniquePixels[i, 0], uniquePixels[i, 1], uniquePixels[i, 2], 2]
-            maxSat = LUT[uniquePixels[i, 0], uniquePixels[i, 1], uniquePixels[i, 2], 3]
-            sat = min(sat*satFactor, maxSat)
-            oklab[i, 0] = LUT[uniquePixels[i, 0], uniquePixels[i, 1], uniquePixels[i, 2], 0]
-            oklab[i, 1] = sat*np.cos(hue)
-            oklab[i, 2] = sat*np.sin(hue)
-        return oklab
+    def _lms2lmsPrime(lms, lms2oklmsMatrix):
+        lmsPrime = lms@lms2oklmsMatrix
+        for m in prange(lmsPrime.shape[0]):
+            for n in prange(lmsPrime.shape[1]):
+                if lmsPrime[m, n] < 0:
+                    lmsPrime[m, n] = 0
+                else:
+                    lmsPrime[m, n] **= 1/3
+        return lmsPrime
 
     @staticmethod
-    @njit(cache=True)
-    def _oklab2srgb(oklab, LUT):
-        transMatrix1 = np.array([[0.9999999985, 1.0000000089, 1.0000000547],
-                                 [0.3963377922, -0.1055613423, -0.0894841821],
-                                 [0.2158037581, -0.0638541748, -1.2914855379]], dtype=np.float32)
-        transMatrix2 = np.array([[4.07674166, -1.268438, -0.00419609],
-                                 [-3.30771159, 2.6097574, -0.70341861],
-                                 [0.23096993, -0.3413194, 1.7076147]], dtype=np.float32)
-        linearSrgb = ((oklab@transMatrix1)**3)@transMatrix2
-        srgb = np.zeros((linearSrgb.shape[0], linearSrgb.shape[1]), dtype=np.uint8)
-        for m in prange(linearSrgb.shape[0]):
-            for n in prange(linearSrgb.shape[1]):
-                srgb[m, n] = LUT[round(linearSrgb[m, n]*4095)]
+    @njit(parallel=True, cache=True)
+    def _lmsPrime2srgb(oklms, oklms2lsrgbMatrix):
+        for m in prange(oklms.shape[0]):
+            for n in prange(oklms.shape[1]):
+                oklms[m, n] **= 3
+        srgb = oklms@oklms2lsrgbMatrix
+        for m in prange(srgb.shape[0]):
+            for n in prange(srgb.shape[1]):
+                subPixel = srgb[m, n]
+                if subPixel < 0:
+                    srgb[m, n] = 0
+                elif subPixel > 1:
+                    srgb[m, n] = 1
+                elif subPixel <= .0031308:
+                    srgb[m, n] = subPixel*12.92
+                else:
+                    srgb[m, n] = 1.055*subPixel**(1/2.4)-.055
         return srgb
 
 
@@ -304,14 +312,16 @@ class _ImageProcessor:
         self._modifiedPixels = copy.deepcopy(self._originalPixels)
         self._rgbModifier = _RgbModifier(self._modifiedPixels)
         self._lmsModifier = _LmsModifier(self._modifiedPixels)
-        self._oklchModifier = _OklchModifier(self._modifiedPixels)
+        self._oklchModifier = _OklabModifier(self._modifiedPixels)
         self._processedImage = _Observable(self._modifiedPixels.reverse())
         self.processingParams = {ParamType.EQUALIZE: 0.,
                                  ParamType.BRIGHTNESS: 1.,
                                  ParamType.CONTRAST: 1.,
                                  ParamType.SATURATION: 1.,
                                  ParamType.WARMTH: 0.,
-                                 ParamType.TINT: 0.}
+                                 ParamType.TINT: 0.,
+                                 ParamType.TWO_TONE_HUE: 0.,
+                                 ParamType.TWO_TONE_SATURATION: 1.}
 
     @property
     def processedImage(self):
@@ -332,7 +342,9 @@ class _ImageProcessor:
                                                         self.processingParams[ParamType.CONTRAST],
                                                         self.processingParams[ParamType.WARMTH],
                                                         self.processingParams[ParamType.TINT])
-        self._oklchModifier.modify_saturation(self.processingParams[ParamType.SATURATION])
+        self._oklchModifier.modify_hue_saturation(self.processingParams[ParamType.SATURATION],
+                                                  self.processingParams[ParamType.TWO_TONE_HUE],
+                                                  self.processingParams[ParamType.TWO_TONE_SATURATION])
         self._processedImage.data = self._modifiedPixels.reverse()
 
 
