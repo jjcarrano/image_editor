@@ -177,6 +177,8 @@ class _AdjustmentsPanel(stl.FrameAutoStyle):
         self.saturationSliderGroup = _SliderGroup(self._frame, title='Saturation')
         self.warmthSliderGroup = _SliderGroup(self._frame, title='Warmth')
         self.tintSliderGroup = _SliderGroup(self._frame, title='Tint')
+        self.twoToneHueSliderGroup = _SliderGroup(self._frame, title='Two Tone Hue', valueRange=(-90, 90))
+        self.twoToneSaturationSliderGroup = _SliderGroup(self._frame, title='Two Tone Saturation')
         self._checkboxFlag = tk.IntVar(0)
         self.beforeAfterCheckbox = stl.CheckbuttonAutoStyle(self._frame,
                                                             variable=self._checkboxFlag,
@@ -190,7 +192,9 @@ class _AdjustmentsPanel(stl.FrameAutoStyle):
         self.contrastSliderGroup.pack(pady=sliderPadding)
         self.saturationSliderGroup.pack(pady=sliderPadding)
         self.warmthSliderGroup.pack(pady=sliderPadding)
-        self.tintSliderGroup.pack()
+        self.tintSliderGroup.pack(pady=sliderPadding)
+        self.twoToneHueSliderGroup.pack(pady=sliderPadding)
+        self.twoToneSaturationSliderGroup.pack()
         self.beforeAfterCheckbox.pack(fill=tk.X, pady=(14, 0))
         self.beforeAfterCheckbox.bind('<FocusIn>', self._on_checkbox_focus)
 
@@ -207,12 +211,12 @@ class _AdjustmentsPanel(stl.FrameAutoStyle):
 
 
 class _SliderGroup(stl.FrameAutoStyle):
-    def __init__(self, container, title, valueRange=(-100, 100)):
+    def __init__(self, container, title, valueRange=(-100, 100), initialValue=0):
         super().__init__(container)
         self._command = lambda *args, **kwargs: None
         self._title = stl.LabelAutoStyle(self, text=title, anchor='w')
         self._slider = lw.LinkableSlider(self, value=.5, length=240, takefocus=False)
-        self._entryBox = lw.LinkableEntry(self, valueRange,
+        self._entryBox = lw.LinkableEntry(self, valueRange, initialValue,
                                           width=4,
                                           bg='#454545',
                                           fg=stl.FONT_COLOR_1,
