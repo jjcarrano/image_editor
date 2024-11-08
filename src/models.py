@@ -354,14 +354,14 @@ class Model:
         def downscale_image_if_too_big(img):
             maxRelDim = np.maximum(img.shape[0]/maxDisplayImageSize[0], img.shape[1]/maxDisplayImageSize[1])
             if maxRelDim > 1:
-                # add anti-aliasing filter before downsampling, consider linearizing first
+                # TODO: add anti-aliasing filter before downsampling, consider linearizing first
                 img = cv2.resize(img, None, fx=maxRelDim**-1, fy=maxRelDim**-1, interpolation=cv2.INTER_CUBIC)
             return img
 
         self.filePath = filePath
         self._existUnsavedChanges = _Observable(False)
         image = cv2.imread(filePath, cv2.IMREAD_UNCHANGED)
-        # Add compatibility for 16 and 32 bit images
+        # TODO: add compatibility for 16 and 32 bit images
         if image.dtype == np.uint16:
             image = np.round(image/257).astype(np.uint8)
         elif image.dtype == np.float32:
