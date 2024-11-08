@@ -398,6 +398,3 @@ class Model:
 
     def add_existUnsavedChanges_callback(self, func):
         self._existUnsavedChanges.add_callback(func)
-
-
-Model('../assets/tile.png').change_processing_params({ParamType.BRIGHTNESS: 1.1})

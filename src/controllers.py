@@ -7,6 +7,8 @@ from scipy import special
 
 class MasterController:
     def __init__(self):
+        # allows numba code to compile before user is displayed GUI
+        models.Model('../assets/tile.png').change_processing_params({models.ParamType.BRIGHTNESS: 1.1})
         self._root = views.Root()
         self._tabControllers = []
         self._maxDisplayImageSize = None
