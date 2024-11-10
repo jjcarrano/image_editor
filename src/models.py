@@ -1,3 +1,5 @@
+from typing import Generic, TypeVar, Optional, Callable, Any
+from numpy.typing import NDArray
 import cv2
 import numpy as np
 import enum
@@ -17,24 +19,27 @@ class ParamType(enum.Enum):
     TWO_TONE_SATURATION = enum.auto()
 
 
-class _Observable:
-    def __init__(self, initialValue=None):
-        self._data = initialValue
-        self._callbacks = set()
+T = TypeVar('T')
+
+
+class _Observable(Generic[T]):
+    def __init__(self, initialValue: Optional[T] = None) -> None:
+        self._data: Optional[T] = initialValue
+        self._callbacks: set = set()
 
     @property
-    def data(self):
+    def data(self) -> Optional[T]:
         return self._data
 
     @data.setter
-    def data(self, value):
+    def data(self, value: Optional[T]) -> None:
         self._data = value
         self._do_callbacks()
 
-    def add_callback(self, func):
+    def add_callback(self, func: Callable[..., Any]) -> None:
         self._callbacks.add(func)
 
-    def _do_callbacks(self):
+    def _do_callbacks(self) -> None:
         for func in self._callbacks:
             func(self._data)
 
@@ -349,17 +354,17 @@ class _ImageProcessor:
 
 
 class Model:
-    def __init__(self, filePath, maxDisplayImageSize=(780, 1525)):
+    def __init__(self, filePath: str, maxDisplayImageSize: tuple[int, int] = (780, 1525)) -> None:
 
-        def downscale_image_if_too_big(img):
+        def downscale_image_if_too_big(img: NDArray[np.uint8]) -> NDArray[np.uint8]:
             maxRelDim = np.maximum(img.shape[0]/maxDisplayImageSize[0], img.shape[1]/maxDisplayImageSize[1])
             if maxRelDim > 1:
                 # TODO: add anti-aliasing filter before downsampling, consider linearizing first
                 img = cv2.resize(img, None, fx=maxRelDim**-1, fy=maxRelDim**-1, interpolation=cv2.INTER_CUBIC)
             return img
 
-        self.filePath = filePath
-        self._existUnsavedChanges = _Observable(False)
+        self.filePath: str = filePath
+        self._existUnsavedChanges: _Observable[bool] = _Observable(False)
         image = cv2.imread(filePath, cv2.IMREAD_UNCHANGED)
         # TODO: add compatibility for 16 and 32 bit images
         if image.dtype == np.uint16:
@@ -369,10 +374,10 @@ class Model:
         elif image.dtype != np.uint8:
             raise TypeError('Can\'t handle image of type '+str(image.dtype))
         image = image[:, :, [2, 1, 0]]
-        self._originalTrueImage = image
-        image = downscale_image_if_too_big(image)
-        self.originalDisplayImage = image
-        self._displayImageProcessor = _ImageProcessor(image)
+        self._originalTrueImage: NDArray[np.uint8] = image
+        imageDownscaled = downscale_image_if_too_big(image)
+        self.originalDisplayImage: NDArray[np.uint8] = imageDownscaled
+        self._displayImageProcessor: _ImageProcessor = _ImageProcessor(imageDownscaled)
 
     @property
     def processedDisplayImage(self):
