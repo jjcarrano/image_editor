@@ -1,3 +1,3 @@
-from controllers import MasterController
+from presenters import MasterPresenter
 
-MasterController()
+MasterPresenter()

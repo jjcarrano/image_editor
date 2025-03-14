@@ -5,12 +5,12 @@ from math import exp, log
 from scipy import special
 
 
-class MasterController:
+class MasterPresenter:
     def __init__(self):
         # allows numba code to compile before user is displayed GUI
         models.Model('../assets/tile.png').change_processing_params({models.ParamType.BRIGHTNESS: 1.1})
         self._root = views.Root()
-        self._tabControllers = []
+        self._tabPresenters = []
         self._maxDisplayImageSize = None
         self._root.bind_exit_button(self.exit_button_callback)
         self._root.menuBar.bind_button(self._root.menuBar.ButtonType.OPEN, self.open_button_callback)
@@ -23,46 +23,46 @@ class MasterController:
     def open_button_callback(self):
         filePath = views.open_file_dialog()
         if filePath:
-            self._tabControllers.append(_TabController(filePath, self._root.fileTabs, self._maxDisplayImageSize))
+            self._tabPresenters.append(_TabPresenters(filePath, self._root.fileTabs, self._maxDisplayImageSize))
             if self._maxDisplayImageSize is None:
-                self._maxDisplayImageSize = self._tabControllers[0].maxDisplayImageSize
-            self._root.switch_to_tab(len(self._tabControllers)-1)
+                self._maxDisplayImageSize = self._tabPresenters[0].maxDisplayImageSize
+            self._root.switch_to_tab(len(self._tabPresenters) - 1)
             self._root.menuBar.enable_button(self._root.menuBar.ButtonType.SAVE)
             self._root.menuBar.enable_button(self._root.menuBar.ButtonType.SAVE_AS)
             self._root.menuBar.enable_button(self._root.menuBar.ButtonType.CLOSE)
 
     def save_as_button_callback(self):
-        self._tabControllers[self._root.currentTab].save_as_button_callback()
+        self._tabPresenters[self._root.currentTab].save_as_button_callback()
 
     def save_button_callback(self):
-        self._tabControllers[self._root.currentTab].save_button_callback()
+        self._tabPresenters[self._root.currentTab].save_button_callback()
 
     def close_button_callback(self):
         saveChanges = False
-        if self._tabControllers[self._root.currentTab].existUnsavedChanges:
-            saveChanges = views.unsaved_changes_dialog(self._tabControllers[self._root.currentTab].fileName)
+        if self._tabPresenters[self._root.currentTab].existUnsavedChanges:
+            saveChanges = views.unsaved_changes_dialog(self._tabPresenters[self._root.currentTab].fileName)
         if saveChanges is not None:
             if saveChanges:
                 self.save_button_callback()
-            self._tabControllers.pop(self._root.currentTab)
+            self._tabPresenters.pop(self._root.currentTab)
             self._root.close_tab(self._root.currentTab)
-            if not self._tabControllers:
+            if not self._tabPresenters:
                 self._root.menuBar.disable_button(self._root.menuBar.ButtonType.SAVE)
                 self._root.menuBar.disable_button(self._root.menuBar.ButtonType.SAVE_AS)
                 self._root.menuBar.disable_button(self._root.menuBar.ButtonType.CLOSE)
 
     def exit_button_callback(self):
-        while self._tabControllers:
-            tabId = len(self._tabControllers)-1
+        while self._tabPresenters:
+            tabId = len(self._tabPresenters) - 1
             self._root.switch_to_tab(tabId)
             self.close_button_callback()
-            if len(self._tabControllers)-1 == tabId:
+            if len(self._tabPresenters)-1 == tabId:
                 break
-        if not self._tabControllers:
+        if not self._tabPresenters:
             self._root.destroy()
 
 
-class _TabController:
+class _TabPresenters:
     def __init__(self, filePath, tabContainer, maxDisplayImageSize):
         self._existUnsavedChanges = False
         self.fileName = filePath.split('/')[-1]
